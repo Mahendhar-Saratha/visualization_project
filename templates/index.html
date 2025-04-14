@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>COVID Economic Visualization</title>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <style>
+    body { font-family: Arial; margin: 20px; background: #f4f4f4; }
+    h2 { margin-top: 40px; }
+    select { width: 300px; height: 150px; }
+    .line { fill: none; stroke-width: 2px; }
+    .legend { font-size: 12px; }
+
+    .tooltip {
+      position: absolute;
+      text-align: left;
+      padding: 6px 10px;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      border-radius: 4px;
+      pointer-events: none;
+      visibility: hidden;
+      z-index: 10;
+    }
+
+  </style>
+</head>
+<body>
+
+  <h2>COVID-19 Cases and Deaths Over Time</h2>
+  <div class="dropdown">
+    <label for="countrySelect">Select Countries:</label><br>
+    <select id="countrySelect" multiple></select>
+  </div>
+  <svg width="1000" height="500"></svg>
+
+  <h2>GDP per Capita vs. Total COVID-19 Cases</h2>
+  <svg id="scatterPlot" width="900" height="500"></svg>
+
+  <h2>Unemployment Rate: Before vs. After COVID</h2>
+  <svg id="unemploymentPlot" width="900" height="500"></svg>
+
+  <h2>Vaccination Rate: Selected Countries</h2>
+<svg id="vaxPlot" width="900" height="500"></svg>
+
+  <h2>Vaccination vs. GDP Recovery</h2>
+<svg id="bubbleChart" width="900" height="550"></svg>
+<h2>Stock Market vs COVID-19 Trends</h2>
+<svg id="stockPlot" width="1000" height="500"></svg>
+
+  <div id="tooltip" class="tooltip"></div>
+
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+</body>
+</html>
