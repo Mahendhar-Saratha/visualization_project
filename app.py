@@ -1,11 +1,13 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import pandas as pd
 
 app = Flask(__name__)
 
 # Load data once (you can reload if using updated datasets)
-covid_df = pd.read_csv("static/data/owid-covid-data.csv")
+covid_df = pd.read_csv("static/data/filtered_data.csv")
 covid_df['date'] = pd.to_datetime(covid_df['date'], errors='coerce')
+
+
 
 # Preprocess for Task 1
 covid_task1_df = covid_df[['location', 'date', 'new_cases_smoothed', 'new_deaths_smoothed']].dropna()
@@ -25,7 +27,17 @@ def index():
 @app.route('/data/covid')
 def covid_cases_data():
     result = []
-    enriched_df = covid_df[['location', 'date', 'new_cases_smoothed', 'new_deaths_smoothed', 'people_fully_vaccinated_per_hundred']].dropna(subset=['new_cases_smoothed', 'new_deaths_smoothed'])
+    # First filter to only include countries that have non-zero GDP data
+    countries_with_gdp = covid_df[
+        (covid_df['gdp_per_capita'].notna()) &
+        (covid_df['gdp_per_capita'] > 0)
+        ]['location'].unique()
+
+    enriched_df = covid_df[
+        (covid_df['location'].isin(countries_with_gdp)) &  # Only include countries with valid GDP
+        (covid_df['new_cases_smoothed'].notna()) &
+        (covid_df['new_deaths_smoothed'].notna())
+        ][['location', 'date', 'new_cases_smoothed', 'new_deaths_smoothed', 'people_fully_vaccinated_per_hundred']]
 
     for location, group in enriched_df.groupby('location'):
         values = [
@@ -96,46 +108,74 @@ def vax_gdp_bubble():
 
 @app.route('/data/stock_market')
 def stock_market_covid():
-    # Load datasets
-    stock_df = pd.read_csv("static/data/Stock Market Dataset.csv")
-    covid_subset = covid_df[['date', 'new_cases_smoothed', 'new_deaths_smoothed']].copy()
+    try:
+        selected_countries = request.args.getlist('country')
 
-    # Parse dates
-    stock_df['date'] = pd.to_datetime(stock_df['Date'], errors='coerce')
-    covid_subset['date'] = pd.to_datetime(covid_subset['date'], errors='coerce')
+        if not selected_countries:
+            selected_countries = ['United States']
 
-    # Keep relevant columns and rename
-    stock_df = stock_df[['date', 'S&P_500_Price']].rename(columns={"S&P_500_Price": "stock_price"})
-    covid_subset = covid_subset.rename(columns={
-        "new_cases_smoothed": "covid_cases",
-        "new_deaths_smoothed": "covid_deaths"
-    })
+        # Load and process stock data
+        stock_data = pd.read_csv("static/data/Stock Market Dataset.csv")
+        stock_data['date'] = pd.to_datetime(stock_data['Date'], errors='coerce')
+        stock_data = stock_data.dropna(subset=['date'])
 
-    # Merge
-    merged = pd.merge(stock_df, covid_subset, on="date", how="inner")
+        # Create month column (YYYY-MM format)
+        stock_data['month'] = stock_data['date'].dt.strftime('%Y-%m')
+        stock_data = stock_data[['month', 'S&P_500_Price']].rename(columns={"S&P_500_Price": "stock_price"})
+        stock_data['stock_price'] = pd.to_numeric(stock_data['stock_price'].str.replace(',', ''), errors='coerce')
+        stock_data = stock_data.dropna(subset=['stock_price'])
 
-    print("Merged columns:", merged.columns.tolist())
-    print("Sample merged rows:\n", merged.head())
+        # Group stock data by month (average prices)
+        stock_monthly = stock_data.groupby('month').agg({
+            'stock_price': 'mean'
+        }).reset_index()
 
-    # Check if expected columns exist before dropna
-    required_cols = ["date", "stock_price", "covid_cases", "covid_deaths"]
-    for col in required_cols:
-        if col not in merged.columns:
-            return jsonify({"error": f"Missing column: {col}"}), 500
+        # Filter COVID data
+        covid_data = covid_df[covid_df['location'].isin(selected_countries)].copy()
+        covid_data['date'] = pd.to_datetime(covid_data['date'], errors='coerce')
+        covid_data = covid_data.dropna(subset=['date'])
 
-    # Clean
-    merged = merged.dropna(subset=required_cols)
+        # Create month column (YYYY-MM format)
+        covid_data['month'] = covid_data['date'].dt.strftime('%Y-%m')
+        covid_data = covid_data.rename(columns={
+            "new_cases_smoothed": "covid_cases",
+            "new_deaths_smoothed": "covid_deaths"
+        })
+        covid_data = covid_data.dropna(subset=['covid_cases', 'covid_deaths'])
 
-    # Return cleaned data
-    result = merged.to_dict(orient='records')
+        # Group COVID data by month and country (average cases/deaths)
+        covid_monthly = covid_data.groupby(['month', 'location']).agg({
+            'covid_cases': 'mean',
+            'covid_deaths': 'mean'
+        }).reset_index()
 
-    merged['stock_price'] = merged['stock_price'].replace(',', '', regex=True).astype(float)
-    merged['covid_cases'] = merged['covid_cases'].astype(float)
-    merged['covid_deaths'] = merged['covid_deaths'].astype(float)
+        # Merge on month column
+        merged = pd.merge(stock_monthly, covid_monthly, on="month", how="inner")
 
-    return jsonify(merged.to_dict(orient="records"))
+        if merged.empty:
+            return jsonify({
+                "data": [],
+                "countries_included": list(covid_data['location'].unique()),
+                "message": "No overlapping months between stock and COVID data",
+                "status": "success"
+            })
 
+        # Prepare response
+        result = merged.round(2).to_dict(orient='records')
+
+        return jsonify({
+            "data": result,
+            "countries_included": list(merged['location'].unique()),
+            "status": "success"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": f"Unexpected error: {str(e)}",
+            "status": "error"
+        }), 500
 
 
 if __name__ == '__main__':
     app.run(debug=True)
+    #stock_market_covid()

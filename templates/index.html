@@ -5,35 +5,81 @@
   <title>COVID Economic Visualization</title>
   <script src="https://d3js.org/d3.v6.min.js"></script>
   <style>
-    body { font-family: Arial; margin: 20px; background: #f4f4f4; }
-    h2 { margin-top: 40px; }
-    select { width: 300px; height: 150px; }
-    .line { fill: none; stroke-width: 2px; }
-    .legend { font-size: 12px; }
-
+    body {
+      font-family: Arial;
+      margin: 20px;
+      background: #f4f4f4;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h2 {
+      margin-top: 40px;
+      margin-bottom: 15px;
+      color: #2c3e50;
+    }
+    select {
+      width: 300px;
+      height: 150px;
+      margin-bottom: 20px;
+    }
+    .line {
+      fill: none;
+      stroke-width: 2px;
+    }
+    .legend {
+      font-size: 14px;
+    }
     .tooltip {
       position: absolute;
       text-align: left;
-      padding: 6px 10px;
-      font-size: 12px;
-      background: rgba(0, 0, 0, 0.75);
+      padding: 8px 12px;
+      font-size: 14px;
+      background: rgba(0, 0, 0, 0.85);
       color: #fff;
       border-radius: 4px;
       pointer-events: none;
       visibility: hidden;
-      z-index: 10;
+      z-index: 100;
+    }
+    svg {
+      background: white;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      margin-bottom: 40px;
     }
 
+    #line-chart .line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+#stockPlot text {
+  font-family: sans-serif;
+  font-size: 12px;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #ccc;
+  shape-rendering: crispEdges;
+}
+
+.tick line {
+  stroke: #eee;
+}
   </style>
 </head>
 <body>
 
-  <h2>COVID-19 Cases and Deaths Over Time</h2>
   <div class="dropdown">
-    <label for="countrySelect">Select Countries:</label><br>
+    <label for="countrySelect">Select Countries (Hold Ctrl/Cmd to select multiple):</label><br>
     <select id="countrySelect" multiple></select>
   </div>
-  <svg width="1000" height="500"></svg>
+
+  <h2>COVID-19 Cases and Deaths Over Time</h2>
+  <svg id="casesPlot" width="1000" height="500"></svg>
 
   <h2>GDP per Capita vs. Total COVID-19 Cases</h2>
   <svg id="scatterPlot" width="900" height="500"></svg>
@@ -42,15 +88,15 @@
   <svg id="unemploymentPlot" width="900" height="500"></svg>
 
   <h2>Vaccination Rate: Selected Countries</h2>
-<svg id="vaxPlot" width="900" height="500"></svg>
+  <svg id="vaxPlot" width="900" height="500"></svg>
 
   <h2>Vaccination vs. GDP Recovery</h2>
-<svg id="bubbleChart" width="900" height="550"></svg>
-<h2>Stock Market vs COVID-19 Trends</h2>
-<svg id="stockPlot" width="1000" height="500"></svg>
+  <svg id="bubbleChart" width="900" height="550"></svg>
+
+  <h2>Stock Market vs COVID-19 Trends</h2>
+  <svg id="stockPlot" width="1000" height="500"></svg>
 
   <div id="tooltip" class="tooltip"></div>
-
 
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
