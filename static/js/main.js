@@ -162,10 +162,21 @@ function updateCasesChart(selectedCountries) {
       .x(d => x(new Date(d.date)))
       .y(d => yDeaths(d.deaths));
 
+    // Create a clip path to prevent lines from overflowing during zoom
+    svg.append("defs").append("clipPath")
+      .attr("id", "clip")
+      .append("rect")
+      .attr("width", width)
+      .attr("height", height);
+
+    // Create a group for the zoomable content
+    const zoomGroup = g.append("g")
+      .attr("clip-path", "url(#clip)");
+
     // Draw lines only
     filtered.forEach(country => {
       // Cases line (solid)
-      g.append("path")
+      zoomGroup.append("path")
         .datum(country.values)
         .attr("class", "cases-line")
         .attr("d", lineCases)
@@ -174,12 +185,15 @@ function updateCasesChart(selectedCountries) {
         .attr("fill", "none")
         .on("mouseover", function(event) {
           d3.select(this).attr("stroke-width", 3);
-          const date = x.invert(d3.pointer(event)[0]);
+          const date = x.invert(d3.pointer(event, this)[0]);
           const closest = d3.least(country.values, d => Math.abs(new Date(d.date) - date));
           showTooltip(event, `
-            <b>${country.location} - Cases</b><br>
-            Date: ${closest.date}<br>
-            Cases: ${d3.format(",")(Math.round(closest.cases))}
+            <div style="text-align:center">
+              <b style="color:${colorCases(country.location)}">${country.location} - Cases</b><br>
+              <hr style="margin:5px 0">
+              Date: <b>${closest.date}</b><br>
+              Cases: <b>${d3.format(",")(Math.round(closest.cases))}</b>
+            </div>
           `);
         })
         .on("mouseout", function() {
@@ -188,7 +202,7 @@ function updateCasesChart(selectedCountries) {
         });
 
       // Deaths line (solid, different color)
-      g.append("path")
+      zoomGroup.append("path")
         .datum(country.values)
         .attr("class", "deaths-line")
         .attr("d", lineDeaths)
@@ -197,12 +211,15 @@ function updateCasesChart(selectedCountries) {
         .attr("fill", "none")
         .on("mouseover", function(event) {
           d3.select(this).attr("stroke-width", 3);
-          const date = x.invert(d3.pointer(event)[0]);
+          const date = x.invert(d3.pointer(event, this)[0]);
           const closest = d3.least(country.values, d => Math.abs(new Date(d.date) - date));
           showTooltip(event, `
-            <b>${country.location} - Deaths</b><br>
-            Date: ${closest.date}<br>
-            Deaths: ${d3.format(",")(Math.round(closest.deaths))}
+            <div style="text-align:center">
+              <b style="color:${colorDeaths(country.location)}">${country.location} - Deaths</b><br>
+              <hr style="margin:5px 0">
+              Date: <b>${closest.date}</b><br>
+              Deaths: <b>${d3.format(",")(Math.round(closest.deaths))}</b>
+            </div>
           `);
         })
         .on("mouseout", function() {
@@ -257,6 +274,34 @@ function updateCasesChart(selectedCountries) {
       .style("font-size", "16px")
       .style("font-weight", "bold")
       .text(`COVID-19 Cases and Deaths${filtered.length === 1 ? ` in ${filtered[0].location}` : ""}`);
+
+    // Add zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([1, 10])
+      .translateExtent([[0, 0], [width, height]])
+      .extent([[0, 0], [width, height]])
+      .on("zoom", (event) => {
+        // Update x-scale with new zoom transform
+        const xz = event.transform.rescaleX(x);
+
+        // Update axes
+        g.select(".x-axis").call(d3.axisBottom(xz));
+
+        // Update lines
+        zoomGroup.selectAll(".cases-line")
+          .attr("d", d3.line()
+            .x(d => xz(new Date(d.date)))
+            .y(d => yCases(d.cases))
+          );
+
+        zoomGroup.selectAll(".deaths-line")
+          .attr("d", d3.line()
+            .x(d => xz(new Date(d.date)))
+            .y(d => yDeaths(d.deaths))
+          );
+      });
+
+    svg.call(zoom);
   }).catch(error => {
     console.error("Error loading COVID data:", error);
     const svg = d3.select("#casesPlot");
@@ -299,20 +344,17 @@ function updateScatterPlot(selectedCountries) {
     return;
   }
 
-  // Log data for debugging
-  console.log("Selected countries data:", selectedData);
-
   // Set domains with padding but without extreme values distorting scale
   const xExtent = d3.extent(selectedData, d => d.total_cases);
   const yExtent = d3.extent(selectedData, d => d.gdp_per_capita);
 
   const x = d3.scaleLinear()
-    .domain([0, xExtent[1] * 1.1]) // Start at 0 for cases
+    .domain([0, xExtent[1] * 1.1])
     .range([0, width])
     .nice();
 
   const y = d3.scaleLinear()
-    .domain([0, yExtent[1] * 1.1]) // Start at 0 for GDP
+    .domain([0, yExtent[1] * 1.1])
     .range([height, 0])
     .nice();
 
@@ -321,7 +363,7 @@ function updateScatterPlot(selectedCountries) {
     .attr("transform", `translate(0,${height})`)
     .call(d3.axisBottom(x)
       .ticks(5)
-      .tickFormat(d => d3.format("~s")(d).replace("G","B"))); // Replace G with B for billions
+      .tickFormat(d => d3.format("~s")(d).replace("G","B")));
 
   g.append("g")
     .call(d3.axisLeft(y)
@@ -344,50 +386,142 @@ function updateScatterPlot(selectedCountries) {
     .style("font-weight", "bold")
     .text("GDP per Capita (USD)");
 
-  // Add circles with better positioning logic
-  g.selectAll("circle")
+  // Color scale for countries
+  const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+    .domain(selectedData.map(d => d.location));
+
+  // Add circles with enhanced interactivity
+  const circles = g.selectAll("circle")
     .data(selectedData)
     .enter()
     .append("circle")
     .attr("cx", d => x(d.total_cases))
     .attr("cy", d => y(d.gdp_per_capita))
-    .attr("r", 8) // Fixed size for better visibility
-    .style("fill", "orange")
+    .attr("r", 0) // Start with radius 0 for animation
+    .style("fill", d => colorScale(d.location))
     .style("opacity", 0.8)
-    .on("mouseover", (event, d) => showTooltip(event,
-       `<b>${d.location}</b><br>
-        Cases: ${d3.format(",")(d.total_cases)}<br>
-        GDP: $${d3.format(",")(d.gdp_per_capita)}`))
-    .on("mouseout", hideTooltip);
+    .attr("stroke", "white")
+    .attr("stroke-width", 2)
+    .on("mouseover", function(event, d) {
+      // Highlight this circle
+      d3.select(this)
+        .transition()
+        .duration(200)
+        .attr("r", 12)
+        .style("opacity", 1)
+        .attr("stroke-width", 3);
 
-  // Add country labels with collision avoidance
+      // Show tooltip with more information
+      showTooltip(event,
+        `<div style="text-align:center">
+          <b style="color:${colorScale(d.location)}">${d.location}</b><br>
+          <hr style="margin:5px 0">
+          Cases: <b>${d3.format(",")(d.total_cases)}</b><br>
+          GDP per capita: <b>$${d3.format(",")(d.gdp_per_capita)}</b>
+        </div>`);
+    })
+    .on("mouseout", function() {
+      d3.select(this)
+        .transition()
+        .duration(200)
+        .attr("r", 8)
+        .style("opacity", 0.8)
+        .attr("stroke-width", 2);
+      hideTooltip();
+    })
+    .on("click", function(event, d) {
+      // Pulse animation on click
+      d3.select(this)
+        .transition()
+        .attr("r", 15)
+        .style("opacity", 0.6)
+        .transition()
+        .attr("r", 8)
+        .style("opacity", 0.8);
+    })
+    // Animate circles growing
+    .transition()
+    .delay((d, i) => i * 100)
+    .duration(500)
+    .attr("r", 8);
+
+  // Add country labels with better positioning and interactivity
   const labels = g.selectAll("text.label")
     .data(selectedData)
     .enter()
     .append("text")
-    .attr("x", d => x(d.total_cases) + 10)
+    .attr("x", d => x(d.total_cases) + 12)
     .attr("y", d => y(d.gdp_per_capita) + 4)
     .text(d => d.location)
     .attr("class", "country-label")
     .style("font-size", "10px")
-    .style("fill", "#333")
-    .style("pointer-events", "none");
+    .style("fill", d => colorScale(d.location))
+    .style("font-weight", "bold")
+    .style("pointer-events", "none")
+    .style("opacity", 0) // Start invisible
+    .transition()
+    .delay((d, i) => i * 100 + 500) // After circles appear
+    .duration(500)
+    .style("opacity", 1);
 
-  // Simple collision avoidance
+  // Improved collision avoidance
   labels.each(function() {
     const thisLabel = d3.select(this);
     const thisY = parseFloat(thisLabel.attr("y"));
+    const thisX = parseFloat(thisLabel.attr("x"));
 
     labels.each(function() {
       const otherLabel = d3.select(this);
       if (thisLabel.node() !== otherLabel.node()) {
         const otherY = parseFloat(otherLabel.attr("y"));
-        if (Math.abs(thisY - otherY) < 15) { // If labels overlap vertically
-          // Adjust one of them
-          otherLabel.attr("y", otherY + 15);
+        const otherX = parseFloat(otherLabel.attr("x"));
+
+        // Check if labels are too close
+        if (Math.abs(thisY - otherY) < 15 && Math.abs(thisX - otherX) < 100) {
+          // Adjust position diagonally
+          otherLabel.attr("y", otherY + 15)
+                   .attr("x", otherX + 15);
         }
       }
     });
+  });
+
+  // Add legend for countries
+  const legend = svg.append("g")
+    .attr("transform", `translate(${width - 100}, 20)`);
+
+  const uniqueCountries = [...new Set(selectedData.map(d => d.location))];
+
+  uniqueCountries.forEach((country, i) => {
+    const legendItem = legend.append("g")
+      .attr("transform", `translate(0, ${i * 20})`)
+      .style("cursor", "pointer")
+      .on("mouseover", function() {
+        // Highlight corresponding circle
+        circles.filter(d => d.location === country)
+          .transition()
+          .duration(200)
+          .attr("r", 12)
+          .style("opacity", 1);
+      })
+      .on("mouseout", function() {
+        // Reset all circles
+        circles.transition()
+          .duration(200)
+          .attr("r", 8)
+          .style("opacity", 0.8);
+      });
+
+    legendItem.append("rect")
+      .attr("width", 15)
+      .attr("height", 15)
+      .attr("fill", colorScale(country));
+
+    legendItem.append("text")
+      .attr("x", 20)
+      .attr("y", 12)
+      .text(country)
+      .style("font-size", "10px");
   });
 }
 
@@ -395,7 +529,7 @@ function updateScatterPlot(selectedCountries) {
 function updateUnemploymentPlot(selectedCountries) {
   const data = unemploymentData.filter(d => selectedCountries.includes(d.location));
   const dim = getDimensions("#unemploymentPlot");
-  
+
   const margin = {top: 50, right: 30, bottom: 100, left: 60};
   const width = dim.width - margin.left - margin.right;
   const height = dim.height - margin.top - margin.bottom;
@@ -410,20 +544,21 @@ function updateUnemploymentPlot(selectedCountries) {
     .domain(data.map(d => d.location))
     .range([0, width])
     .paddingInner(0.2);
-    
+
   const x1 = d3.scaleBand()
     .domain(["before", "after"])
     .range([0, x0.bandwidth()])
     .padding(0.05);
-    
+
   const y = d3.scaleLinear()
     .domain([0, d3.max(data, d => Math.max(d.before, d.after)) * 1.1])
     .range([height, 0]);
-    
+
   const color = d3.scaleOrdinal()
     .domain(["before", "after"])
     .range(["#4daf4a", "#e41a1c"]);
 
+  // Add axes
   g.append("g")
     .attr("transform", `translate(0,${height})`)
     .call(d3.axisBottom(x0))
@@ -433,27 +568,36 @@ function updateUnemploymentPlot(selectedCountries) {
 
   g.append("g").call(d3.axisLeft(y));
 
-  g.selectAll("g.bar-group")
+  // Create bar groups with animation
+  const barGroups = g.selectAll("g.bar-group")
     .data(data)
     .enter()
     .append("g")
     .attr("class", "bar-group")
-    .attr("transform", d => `translate(${x0(d.location)},0)`)
-    .selectAll("rect")
+    .attr("transform", d => `translate(${x0(d.location)},0)`);
+
+  // Add animated bars
+  barGroups.selectAll("rect")
     .data(d => ["before", "after"].map(key => ({key: key, value: d[key]})))
     .enter()
     .append("rect")
     .attr("x", d => x1(d.key))
-    .attr("y", d => y(d.value))
+    .attr("y", height) // Start from bottom
     .attr("width", x1.bandwidth())
-    .attr("height", d => height - y(d.value))
+    .attr("height", 0) // Start with zero height
     .attr("fill", d => color(d.key))
     .on("mouseover", (event, d) => showTooltip(event, `<b>${d.key === "before" ? "2019" : "2021"}</b><br>Rate: ${d.value.toFixed(2)}%`))
-    .on("mouseout", hideTooltip);
+    .on("mouseout", hideTooltip)
+    .transition() // Add transition
+    .delay((d, i) => i * 100) // Stagger animation
+    .duration(800) // Animation duration
+    .attr("y", d => y(d.value))
+    .attr("height", d => height - y(d.value));
 
+  // Add legend
   const legend = svg.append("g")
     .attr("transform", `translate(${width - 120}, 20)`);
-    
+
   ["before", "after"].forEach((label, i) => {
     const yOffset = i * 25;
     legend.append("rect")
@@ -462,7 +606,7 @@ function updateUnemploymentPlot(selectedCountries) {
       .attr("width", 18)
       .attr("height", 18)
       .attr("fill", color(label));
-      
+
     legend.append("text")
       .attr("x", 24)
       .attr("y", yOffset + 14)
@@ -508,6 +652,11 @@ function updateVaccinationPlot(selectedCountries) {
       .domain([0, d3.max(latestData, d => d.value) * 1.1])
       .range([height, 0]);
 
+    // Color scale based on vaccination percentage
+    const colorScale = d3.scaleLinear()
+      .domain([0, 50, 100])
+      .range(["#ffcccc", "#ffeb99", "#66c2a5"]);
+
     g.append("g")
       .attr("transform", `translate(0,${height})`)
       .call(d3.axisBottom(x))
@@ -517,19 +666,45 @@ function updateVaccinationPlot(selectedCountries) {
 
     g.append("g").call(d3.axisLeft(y));
 
+    // Add animation to bars
     g.selectAll("rect")
       .data(latestData)
       .enter()
       .append("rect")
       .attr("x", d => x(d.location))
-      .attr("y", d => y(d.value))
+      .attr("y", height) // Start from bottom
       .attr("width", x.bandwidth())
+      .attr("height", 0) // Start with zero height
+      .attr("fill", d => colorScale(d.value))
+      .transition() // Add transition
+      .duration(800) // Animation duration in ms
+      .attr("y", d => y(d.value))
       .attr("height", d => height - y(d.value))
-      .attr("fill", "#66c2a5")
-      .on("mouseover", (event, d) => {
-        showTooltip(event, `<b>${d.location}</b><br>${d.value.toFixed(1)}% vaccinated`);
-      })
-      .on("mouseout", hideTooltip);
+      .attr("fill", d => colorScale(d.value))
+      .on("end", function() {
+        // After initial animation, add hover effects
+        d3.select(this)
+          .on("mouseover", function(event, d) {
+            d3.select(this)
+              .transition()
+              .duration(200)
+              .attr("fill", "#4daf4a") // Highlight color
+              .attr("width", x.bandwidth() * 1.1) // Increase width
+              .attr("x", x(d.location) - x.bandwidth() * 0.05); // Center the wider bar
+
+            showTooltip(event, `<b>${d.location}</b><br>${d.value.toFixed(1)}% vaccinated`);
+          })
+          .on("mouseout", function() {
+            d3.select(this)
+              .transition()
+              .duration(200)
+              .attr("fill", d => colorScale(d.value)) // Restore original color
+              .attr("width", x.bandwidth())
+              .attr("x", d => x(d.location));
+
+            hideTooltip();
+          });
+      });
 
     g.append("text")
       .attr("transform", "rotate(-90)")
@@ -538,6 +713,38 @@ function updateVaccinationPlot(selectedCountries) {
       .attr("text-anchor", "middle")
       .style("font-weight", "bold")
       .text("% Fully Vaccinated");
+
+    // Add color legend
+    const legend = g.append("g")
+      .attr("class", "legend")
+      .attr("transform", `translate(${width - 150}, -30)`);
+
+    const legendScale = d3.scaleLinear()
+      .domain([0, 100])
+      .range([0, 100]);
+
+    const legendAxis = d3.axisBottom(legendScale)
+      .ticks(5)
+      .tickSize(15);
+
+    legend.append("g")
+      .call(legendAxis);
+
+    legend.selectAll("rect")
+      .data(d3.range(0, 100, 2))
+      .enter()
+      .append("rect")
+      .attr("x", d => legendScale(d))
+      .attr("y", -15)
+      .attr("width", 2)
+      .attr("height", 15)
+      .attr("fill", d => colorScale(d));
+
+    legend.append("text")
+      .attr("x", 50)
+      .attr("y", -25)
+      .attr("text-anchor", "middle")
+      .text("Vaccination Rate");
   });
 }
 
@@ -690,36 +897,32 @@ function updateBubbleChart(selectedCountries) {
 }
 
 // Stock Market vs COVID Trends
-// Stock Market vs COVID Trends
 function updateStockMarketPlot(selectedCountries) {
   const url = `/data/stock_market?${selectedCountries.map(c => `country=${encodeURIComponent(c)}`).join('&')}`;
+
+  const dim = getDimensions("#stockPlot");
+  const margin = {top: 60, right: 180, bottom: 60, left: 60};
+  const width = dim.width - margin.left - margin.right;
+  const height = dim.height - margin.top - margin.bottom;
 
   d3.json(url).then(response => {
     const data = response.data;
     const countriesIncluded = response.countries_included;
 
-    // Increase right margin to accommodate larger legend
-    const dim = getDimensions("#stockPlot");
-    const margin = {top: 60, right: 150, bottom: 60, left: 60};  // Increased right margin
-    const width = dim.width - margin.left - margin.right;
-    const height = dim.height - margin.top - margin.bottom;
-
     const svg = d3.select("#stockPlot");
     svg.selectAll("*").remove();
 
-    // Create group for the chart
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
     if (!data || data.length === 0) {
       g.append("text")
-        .attr("x", width/2)
-        .attr("y", height/2)
+        .attr("x", width / 2)
+        .attr("y", height / 2)
         .attr("text-anchor", "middle")
         .text(response.message || "No data available");
       return;
     }
 
-    // Parse dates and prepare data
     const parseDate = d3.timeParse("%Y-%m");
     const processedData = data.map(d => ({
       date: parseDate(d.month),
@@ -729,7 +932,6 @@ function updateStockMarketPlot(selectedCountries) {
       location: d.location
     })).filter(d => d.date instanceof Date && !isNaN(d.date));
 
-    // Set up color scales using a wider palette
     const colorPalette = [
       "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
       "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
@@ -740,7 +942,6 @@ function updateStockMarketPlot(selectedCountries) {
       .domain(["Stock Market", ...countriesIncluded])
       .range(colorPalette);
 
-    // Set up scales
     const x = d3.scaleTime()
       .domain(d3.extent(processedData, d => d.date))
       .range([0, width])
@@ -757,7 +958,6 @@ function updateStockMarketPlot(selectedCountries) {
       .range([height, 0])
       .nice();
 
-    // Create line generators
     const lineStock = d3.line()
       .x(d => x(d.date))
       .y(d => yLeft(d.stock_price));
@@ -770,22 +970,17 @@ function updateStockMarketPlot(selectedCountries) {
       .x(d => x(d.date))
       .y(d => yRight(d.covid_deaths));
 
-    // Draw stock price line (always shown)
     const stockLine = g.append("path")
-      .datum(processedData.filter((d, i, arr) =>
-        arr.findIndex(a => +a.date === +d.date) === i
-      ))
+      .datum(processedData.filter((d, i, arr) => arr.findIndex(a => +a.date === +d.date) === i))
       .attr("class", "line")
       .attr("d", lineStock)
       .attr("stroke", colorScale("Stock Market"))
       .attr("stroke-width", 2)
-      .style("opacity", 0.9);
+      .attr("opacity", 0.9);
 
-    // Add tooltip for stock line
     stockLine.on("mouseover", function(event) {
       const date = x.invert(d3.pointer(event, this)[0]);
       const closest = d3.least(processedData, d => Math.abs(d.date - date));
-
       showTooltip(event, `
         <b>S&P 500 Index</b><br>
         Date: ${d3.timeFormat("%b %Y")(closest.date)}<br>
@@ -793,24 +988,20 @@ function updateStockMarketPlot(selectedCountries) {
       `);
     }).on("mouseout", hideTooltip);
 
-    // Draw COVID data for each selected country
     countriesIncluded.forEach(country => {
       const countryData = processedData.filter(d => d.location === country);
 
-      // Cases line
       const casesLine = g.append("path")
         .datum(countryData)
         .attr("class", "line")
         .attr("d", lineCases)
         .attr("stroke", colorScale(country))
         .attr("stroke-width", 2)
-        .style("opacity", 0.8);
+        .attr("opacity", 0.8);
 
-      // Add tooltip for cases line
       casesLine.on("mouseover", function(event) {
         const date = x.invert(d3.pointer(event, this)[0]);
         const closest = d3.least(countryData, d => Math.abs(d.date - date));
-
         showTooltip(event, `
           <b>${country} - Cases</b><br>
           Date: ${d3.timeFormat("%b %Y")(closest.date)}<br>
@@ -818,21 +1009,18 @@ function updateStockMarketPlot(selectedCountries) {
         `);
       }).on("mouseout", hideTooltip);
 
-      // Deaths line (dashed)
       const deathsLine = g.append("path")
         .datum(countryData)
         .attr("class", "line")
         .attr("d", lineDeaths)
         .attr("stroke", d3.color(colorScale(country)).darker(0.5))
         .attr("stroke-width", 2)
-        .style("stroke-dasharray", "4 2")
-        .style("opacity", 0.8);
+        .attr("stroke-dasharray", "4 2")
+        .attr("opacity", 0.8);
 
-      // Add tooltip for deaths line
       deathsLine.on("mouseover", function(event) {
         const date = x.invert(d3.pointer(event, this)[0]);
         const closest = d3.least(countryData, d => Math.abs(d.date - date));
-
         showTooltip(event, `
           <b>${country} - Deaths</b><br>
           Date: ${d3.timeFormat("%b %Y")(closest.date)}<br>
@@ -841,7 +1029,6 @@ function updateStockMarketPlot(selectedCountries) {
       }).on("mouseout", hideTooltip);
     });
 
-    // Add axes
     g.append("g")
       .attr("transform", `translate(0,${height})`)
       .call(d3.axisBottom(x).ticks(d3.timeMonth.every(3)));
@@ -852,7 +1039,7 @@ function updateStockMarketPlot(selectedCountries) {
       .attr("fill", "#000")
       .attr("transform", "rotate(-90)")
       .attr("y", -40)
-      .attr("x", -height/2)
+      .attr("x", -height / 2)
       .attr("text-anchor", "middle")
       .text("S&P 500 Index");
 
@@ -863,79 +1050,76 @@ function updateStockMarketPlot(selectedCountries) {
       .attr("fill", "#000")
       .attr("transform", "rotate(-90)")
       .attr("y", 50)
-      .attr("x", height/2)
+      .attr("x", height / 2)
       .attr("text-anchor", "middle")
       .text("COVID Cases/Deaths");
 
-    // Add dynamic legend in top-right corner with more spacing
+    // LEGEND FIXED SECTION
     const legend = svg.append("g")
-      .attr("transform", `translate(${width - 120},${margin.top - 20})`);  // Adjusted position
+      .attr("class", "legend")
+      .attr("transform", `translate(${margin.left + 10}, ${margin.top - 40})`);
 
-    // Add stock legend item with increased vertical spacing
+    let legendY = 0;
+
+    // Stock Market legend
     legend.append("line")
       .attr("x1", 0)
-      .attr("y1", 0)
+      .attr("y1", legendY)
       .attr("x2", 30)
-      .attr("y2", 0)
-      .style("stroke", colorScale("Stock Market"))
-      .style("stroke-width", 2);
+      .attr("y2", legendY)
+      .attr("stroke", colorScale("Stock Market"))
+      .attr("stroke-width", 2);
 
     legend.append("text")
       .attr("x", 40)
-      .attr("y", 5)
-      .text("S&P 500")
-      .style("font-size", "12px");
+      .attr("y", legendY + 5)
+      .attr("font-size", "10px")
+      .text("S&P 500");
 
-    // Add country-specific legend items with increased spacing
-    const itemsPerColumn = Math.ceil(countriesIncluded.length / 2);
-    const columnWidth = 120;
-    const verticalSpacing = 25;  // Increased from 20 to 25
+    legendY += 25;
 
-    countriesIncluded.forEach((country, i) => {
-      const column = i < itemsPerColumn ? 0 : 1;
-      const row = i < itemsPerColumn ? i : i - itemsPerColumn;
-      const yPos = (row + 1) * verticalSpacing;  // Using increased spacing
-      const xPos = column * columnWidth;
-
-      // Cases legend
+    // Country-specific legend entries
+    countriesIncluded.forEach(country => {
       legend.append("line")
-        .attr("x1", xPos)
-        .attr("y1", yPos)
-        .attr("x2", xPos + 30)
-        .attr("y2", yPos)
-        .style("stroke", colorScale(country))
-        .style("stroke-width", 2);
+        .attr("x1", 0)
+        .attr("y1", legendY)
+        .attr("x2", 30)
+        .attr("y2", legendY)
+        .attr("stroke", colorScale(country))
+        .attr("stroke-width", 2);
 
       legend.append("text")
-        .attr("x", xPos + 40)
-        .attr("y", yPos + 5)
-        .text(`${country} Cases`)
-        .style("font-size", "12px");
+        .attr("x", 40)
+        .attr("y", legendY + 5)
+        .attr("font-size", "10px")
+        .text(`${country} Cases`);
 
-      // Deaths legend with additional spacing
+      legendY += 20;
+
       legend.append("line")
-        .attr("x1", xPos)
-        .attr("y1", yPos + 15)
-        .attr("x2", xPos + 30)
-        .attr("y2", yPos + 15)
-        .style("stroke", d3.color(colorScale(country)).darker(0.5))
-        .style("stroke-width", 2)
-        .style("stroke-dasharray", "4 2");
+        .attr("x1", 0)
+        .attr("y1", legendY)
+        .attr("x2", 30)
+        .attr("y2", legendY)
+        .attr("stroke", d3.color(colorScale(country)).darker(0.5))
+        .attr("stroke-width", 2)
+        .attr("stroke-dasharray", "4 2");
 
       legend.append("text")
-        .attr("x", xPos + 40)
-        .attr("y", yPos + 20)
-        .text(`${country} Deaths`)
-        .style("font-size", "12px");
+        .attr("x", 40)
+        .attr("y", legendY + 5)
+        .attr("font-size", "10px")
+        .text(`${country} Deaths`);
+
+      legendY += 30;
     });
 
-    // Add title
     svg.append("text")
-      .attr("x", width/2 + margin.left)
-      .attr("y", margin.top/2)
+      .attr("x", width / 2 + margin.left)
+      .attr("y", margin.top / 2)
       .attr("text-anchor", "middle")
-      .style("font-size", "16px")
-      .style("font-weight", "bold")
+      .attr("font-size", "16px")
+      .attr("font-weight", "bold")
       .text("Stock Market vs COVID Trends");
 
   }).catch(error => {
@@ -943,12 +1127,14 @@ function updateStockMarketPlot(selectedCountries) {
     const svg = d3.select("#stockPlot");
     svg.selectAll("*").remove();
     svg.append("text")
-      .attr("x", dim.width/2)
-      .attr("y", dim.height/2)
+      .attr("x", dim.width / 2)
+      .attr("y", dim.height / 2)
       .attr("text-anchor", "middle")
       .text("Error loading data. Please try again.");
   });
 }
+
+
 
 
 // Tooltip functions
@@ -963,7 +1149,6 @@ function hideTooltip() {
   tooltip.style("visibility", "hidden");
 }
 
-// Initialize when DOM is loaded
 document.addEventListener("DOMContentLoaded", function() {
   initCharts();
   

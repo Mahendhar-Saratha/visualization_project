@@ -4,72 +4,6 @@
   <meta charset="UTF-8">
   <title>COVID Economic Visualization</title>
   <script src="https://d3js.org/d3.v6.min.js"></script>
-  <style>
-    body {
-      font-family: Arial;
-      margin: 20px;
-      background: #f4f4f4;
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    h2 {
-      margin-top: 40px;
-      margin-bottom: 15px;
-      color: #2c3e50;
-    }
-    select {
-      width: 300px;
-      height: 150px;
-      margin-bottom: 20px;
-    }
-    .line {
-      fill: none;
-      stroke-width: 2px;
-    }
-    .legend {
-      font-size: 14px;
-    }
-    .tooltip {
-      position: absolute;
-      text-align: left;
-      padding: 8px 12px;
-      font-size: 14px;
-      background: rgba(0, 0, 0, 0.85);
-      color: #fff;
-      border-radius: 4px;
-      pointer-events: none;
-      visibility: hidden;
-      z-index: 100;
-    }
-    svg {
-      background: white;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
-      margin-bottom: 40px;
-    }
-
-    #line-chart .line {
-  fill: none;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-#stockPlot text {
-  font-family: sans-serif;
-  font-size: 12px;
-}
-
-.axis path,
-.axis line {
-  fill: none;
-  stroke: #ccc;
-  shape-rendering: crispEdges;
-}
-
-.tick line {
-  stroke: #eee;
-}
-  </style>
 </head>
 <body>
 
@@ -99,6 +33,6 @@
   <div id="tooltip" class="tooltip"></div>
 
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles1.css') }}">
 </body>
 </html>
