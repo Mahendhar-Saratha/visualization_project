@@ -131,7 +131,7 @@ function updateCasesChart(selectedCountries) {
       .append("text")
       .attr("transform", "rotate(-90)")
       .attr("y", -50)
-      .attr("x", -height/2)
+      .attr("x", -height/2 + 20)
       .attr("fill", "#000")
       .attr("text-anchor", "middle")
       .style("font-weight", "bold")
@@ -566,7 +566,19 @@ function updateUnemploymentPlot(selectedCountries) {
     .attr("transform", "rotate(-45)")
     .style("text-anchor", "end");
 
-  g.append("g").call(d3.axisLeft(y));
+  g.append("g")
+    .call(d3.axisLeft(y))
+    .append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", -35)
+    .attr("x", -height / 2)
+    .attr("dy", "-1em")
+    .attr("fill", "#000")
+    .attr("text-anchor", "middle")
+    .style("font-weight", "bold")
+    .text("Unemployment Rate (%)");
+
+
 
   // Create bar groups with animation
   const barGroups = g.selectAll("g.bar-group")
@@ -1039,7 +1051,7 @@ function updateStockMarketPlot(selectedCountries) {
       .attr("fill", "#000")
       .attr("transform", "rotate(-90)")
       .attr("y", -40)
-      .attr("x", -height / 2)
+      .attr("x", -height/2 + 20)
       .attr("text-anchor", "middle")
       .text("S&P 500 Index");
 
